@@ -1,0 +1,1827 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>ClickHouse 操作指南 · 业务元数据 & 备份</title>
+<meta name="description" content="ClickHouse 业务元数据操作指南与备份操作指南 - 完整操作手册">
+<style>
+  /* ========== 基础重置与变量 ========== */
+  :root {
+    --bg: #ffffff;
+    --bg-soft: #f6f8fa;
+    --bg-sidebar: #fbfcfd;
+    --bg-code: #f6f8fa;
+    --bg-code-header: #ebeef2;
+    --text: #1f2328;
+    --text-soft: #57606a;
+    --text-muted: #8b949e;
+    --border: #d0d7de;
+    --border-soft: #e6e8eb;
+    --accent: #0969da;
+    --accent-soft: #ddf4ff;
+    --accent-dark: #0550ae;
+    --success: #1a7f37;
+    --warning: #9a6700;
+    --danger: #cf222e;
+    --purple: #8250df;
+    --shadow-sm: 0 1px 2px rgba(0,0,0,0.04);
+    --shadow-md: 0 4px 12px rgba(0,0,0,0.08);
+    --radius: 8px;
+    --radius-sm: 4px;
+    --max-content: 880px;
+    --sidebar-w: 300px;
+  }
+
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; scroll-padding-top: 80px; }
+  body {
+    margin: 0;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Hiragino Sans GB", sans-serif;
+    font-size: 15px;
+    line-height: 1.7;
+    color: var(--text);
+    background: var(--bg);
+    -webkit-font-smoothing: antialiased;
+  }
+  code, pre, .mono { font-family: "SF Mono", Monaco, "Cascadia Code", "Roboto Mono", Consolas, "Courier New", monospace; }
+
+  /* ========== 顶栏 ========== */
+  .topbar {
+    position: fixed; top: 0; left: 0; right: 0; height: 60px; z-index: 100;
+    background: rgba(255,255,255,0.92);
+    backdrop-filter: saturate(180%) blur(12px);
+    -webkit-backdrop-filter: saturate(180%) blur(12px);
+    border-bottom: 1px solid var(--border);
+    display: flex; align-items: center;
+    padding: 0 24px;
+  }
+  .brand {
+    display: flex; align-items: center; gap: 10px;
+    font-weight: 700; font-size: 16px; color: var(--text);
+    text-decoration: none;
+    width: calc(var(--sidebar-w) - 24px);
+  }
+  .brand-logo {
+    width: 32px; height: 32px; border-radius: 8px;
+    background: linear-gradient(135deg, #f55 0%, #cc0000 100%);
+    display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 800; font-size: 14px;
+    box-shadow: 0 2px 6px rgba(204,0,0,0.3);
+  }
+  .brand-text small { display: block; font-size: 11px; font-weight: 500; color: var(--text-muted); margin-top: -2px;}
+  .search-wrap { flex: 1; max-width: 520px; position: relative; }
+  .search-input {
+    width: 100%; height: 36px; padding: 0 12px 0 36px;
+    border: 1px solid var(--border); border-radius: var(--radius-sm);
+    background: var(--bg-soft); font-size: 14px; color: var(--text);
+    transition: all 0.15s;
+  }
+  .search-input:focus { outline: none; border-color: var(--accent); background: #fff; box-shadow: 0 0 0 3px var(--accent-soft); }
+  .search-icon { position: absolute; left: 11px; top: 50%; transform: translateY(-50%); color: var(--text-muted); }
+  .topbar-actions { display: flex; gap: 8px; margin-left: auto; }
+  .icon-btn {
+    width: 36px; height: 36px; border-radius: var(--radius-sm);
+    border: 1px solid var(--border); background: var(--bg);
+    cursor: pointer; display: flex; align-items: center; justify-content: center;
+    color: var(--text-soft); transition: all 0.15s;
+  }
+  .icon-btn:hover { background: var(--bg-soft); color: var(--accent); border-color: var(--accent); }
+
+  /* ========== 侧边栏 ========== */
+  .sidebar {
+    position: fixed; top: 60px; left: 0; bottom: 0;
+    width: var(--sidebar-w);
+    background: var(--bg-sidebar);
+    border-right: 1px solid var(--border);
+    overflow-y: auto;
+    padding: 24px 12px 60px;
+    font-size: 14px;
+  }
+  .sidebar::-webkit-scrollbar { width: 6px; }
+  .sidebar::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+  .sidebar::-webkit-scrollbar-track { background: transparent; }
+  .nav-section { margin-bottom: 18px; }
+  .nav-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: 0.08em; color: var(--text-muted);
+    padding: 6px 12px; margin-bottom: 4px;
+  }
+  .nav-link {
+    display: block; padding: 5px 12px; border-radius: var(--radius-sm);
+    color: var(--text-soft); text-decoration: none; line-height: 1.5;
+    transition: all 0.12s; border-left: 2px solid transparent;
+  }
+  .nav-link:hover { background: var(--bg-soft); color: var(--accent); }
+  .nav-link.active { background: var(--accent-soft); color: var(--accent-dark); font-weight: 600; border-left-color: var(--accent); }
+  .nav-link.sub { padding-left: 26px; font-size: 13px; color: var(--text-muted); }
+  .nav-link.sub.active { color: var(--accent-dark); }
+
+  /* ========== 主内容 ========== */
+  .content {
+    margin-left: var(--sidebar-w);
+    padding: 90px 48px 120px;
+    max-width: var(--max-content);
+  }
+  .hero {
+    background: linear-gradient(135deg, #fff5f5 0%, #fff 60%);
+    border: 1px solid var(--border);
+    border-radius: 16px;
+    padding: 40px 36px;
+    margin-bottom: 40px;
+    position: relative;
+    overflow: hidden;
+  }
+  .hero::before {
+    content: ""; position: absolute; right: -40px; top: -40px;
+    width: 200px; height: 200px; border-radius: 50%;
+    background: radial-gradient(circle, rgba(204,0,0,0.08), transparent 70%);
+  }
+  .hero h1 { margin: 0 0 12px; font-size: 32px; line-height: 1.2; }
+  .hero p { margin: 0 0 18px; color: var(--text-soft); font-size: 16px; max-width: 620px;}
+  .hero-meta { display: flex; gap: 18px; flex-wrap: wrap; font-size: 13px; color: var(--text-muted);}
+  .hero-meta span { display: inline-flex; align-items: center; gap: 6px; }
+  .badge {
+    display: inline-block; padding: 2px 8px; border-radius: 10px;
+    font-size: 12px; font-weight: 600; vertical-align: middle;
+  }
+  .badge-red { background: #ffe5e5; color: #cc0000; }
+  .badge-blue { background: var(--accent-soft); color: var(--accent-dark); }
+  .badge-green { background: #dafbe1; color: var(--success); }
+
+  h2.section-title {
+    font-size: 28px; margin: 56px 0 8px; padding-bottom: 12px;
+    border-bottom: 2px solid var(--border);
+    display: flex; align-items: center; gap: 12px;
+  }
+  h2.section-title .num {
+    display: inline-flex; align-items: center; justify-content: center;
+    width: 36px; height: 36px; border-radius: 8px;
+    background: linear-gradient(135deg, #f55, #cc0000); color: #fff;
+    font-size: 18px; font-weight: 700;
+  }
+  h3 { font-size: 21px; margin: 36px 0 12px; scroll-margin-top: 80px; }
+  h4 { font-size: 17px; margin: 24px 0 8px; color: var(--text); scroll-margin-top: 80px;}
+  h4::before { content: "▸ "; color: var(--accent); }
+  p { margin: 10px 0; }
+  ul, ol { padding-left: 22px; margin: 10px 0; }
+  li { margin: 6px 0; }
+  a { color: var(--accent); text-decoration: none; }
+  a:hover { text-decoration: underline; }
+  strong { color: var(--text); font-weight: 600; }
+  hr { border: 0; border-top: 1px solid var(--border-soft); margin: 36px 0; }
+
+  /* ========== 代码块 ========== */
+  .code-block {
+    margin: 16px 0; border: 1px solid var(--border); border-radius: var(--radius);
+    background: var(--bg-code); overflow: hidden; box-shadow: var(--shadow-sm);
+  }
+  .code-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 6px 14px; background: var(--bg-code-header);
+    border-bottom: 1px solid var(--border-soft);
+    font-size: 12px; color: var(--text-muted);
+  }
+  .code-lang { font-weight: 600; text-transform: uppercase; letter-spacing: 0.04em; }
+  .copy-btn {
+    background: transparent; border: 1px solid var(--border); border-radius: 4px;
+    padding: 3px 10px; font-size: 11px; cursor: pointer; color: var(--text-soft);
+    display: inline-flex; align-items: center; gap: 4px; transition: all 0.15s;
+  }
+  .copy-btn:hover { background: #fff; color: var(--accent); border-color: var(--accent); }
+  .copy-btn.copied { background: var(--success); color: #fff; border-color: var(--success); }
+  pre {
+    margin: 0; padding: 14px 16px; overflow-x: auto;
+    font-size: 13px; line-height: 1.6;
+  }
+  pre::-webkit-scrollbar { height: 8px; }
+  pre::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+  code { font-size: 13px; }
+  p code, li code, td code {
+    background: var(--bg-code); padding: 2px 6px; border-radius: 3px;
+    font-size: 0.88em; color: var(--danger); border: 1px solid var(--border-soft);
+  }
+
+  /* 简易语法高亮 */
+  .tok-kw { color: #cf222e; font-weight: 600; }
+  .tok-fn { color: #8250df; }
+  .tok-str { color: #0a3069; }
+  .tok-num { color: #0550ae; }
+  .tok-cmt { color: #6e7781; font-style: italic; }
+  .tok-op { color: #0550ae; }
+
+  /* ========== 提示框 ========== */
+  .callout {
+    margin: 16px 0; padding: 14px 18px; border-radius: var(--radius);
+    border-left: 4px solid; font-size: 14px;
+  }
+  .callout-title { font-weight: 700; margin-bottom: 4px; display: flex; align-items: center; gap: 6px; }
+  .callout p:last-child { margin-bottom: 0; }
+  .callout-info { background: #ddf4ff; border-color: var(--accent); color: #0a3069; }
+  .callout-warn { background: #fff8c5; border-color: #d4a72c; color: #633c01; }
+  .callout-danger { background: #ffe5e5; border-color: var(--danger); color: #82071e; }
+  .callout-tip { background: #dafbe1; border-color: var(--success); color: #0a3622; }
+
+  /* ========== 表格 ========== */
+  .table-wrap { overflow-x: auto; margin: 16px 0; border: 1px solid var(--border); border-radius: var(--radius); }
+  table { width: 100%; border-collapse: collapse; font-size: 14px; background: #fff; }
+  th, td { padding: 10px 14px; text-align: left; border-bottom: 1px solid var(--border-soft); }
+  th { background: var(--bg-soft); font-weight: 600; color: var(--text); }
+  tr:last-child td { border-bottom: 0; }
+  tr:hover td { background: #fafbfc; }
+
+  /* ========== 回到顶部 ========== */
+  .back-top {
+    position: fixed; right: 32px; bottom: 32px;
+    width: 44px; height: 44px; border-radius: 50%;
+    background: var(--accent); color: #fff; border: none;
+    cursor: pointer; box-shadow: var(--shadow-md);
+    display: flex; align-items: center; justify-content: center;
+    opacity: 0; transform: translateY(20px); transition: all 0.25s; z-index: 90;
+  }
+  .back-top.show { opacity: 1; transform: translateY(0); }
+  .back-top:hover { background: var(--accent-dark); }
+
+  /* ========== 搜索结果 ========== */
+  .search-results {
+    position: fixed; top: 60px; left: var(--sidebar-w); right: 0;
+    max-height: 70vh; overflow-y: auto;
+    background: #fff; border-bottom: 1px solid var(--border);
+    box-shadow: var(--shadow-md); display: none; z-index: 99;
+    padding: 12px 24px;
+  }
+  .search-results.show { display: block; }
+  .search-result-item {
+    padding: 10px 14px; border-radius: var(--radius-sm); cursor: pointer;
+    border-bottom: 1px solid var(--border-soft);
+  }
+  .search-result-item:hover { background: var(--bg-soft); }
+  .search-result-item .title { font-weight: 600; color: var(--text); }
+  .search-result-item .snippet { font-size: 13px; color: var(--text-muted); margin-top: 2px; }
+  .search-result-item mark { background: #fff3a0; padding: 0 2px; border-radius: 2px; }
+  .no-result { padding: 20px; text-align: center; color: var(--text-muted); }
+
+  /* ========== 页脚 ========== */
+  .footer {
+    margin-left: var(--sidebar-w); padding: 32px 48px;
+    border-top: 1px solid var(--border); background: var(--bg-soft);
+    color: var(--text-muted); font-size: 13px;
+    display: flex; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+  }
+
+  /* ========== 移动端 ========== */
+  .menu-toggle { display: none; }
+  @media (max-width: 900px) {
+    .sidebar { transform: translateX(-100%); transition: transform 0.25s; z-index: 95; }
+    .sidebar.open { transform: translateX(0); }
+    .content { margin-left: 0; padding: 90px 20px 80px; }
+    .footer { margin-left: 0; padding: 24px 20px; }
+    .brand { width: auto; }
+    .search-wrap { max-width: none; }
+    .menu-toggle { display: flex; }
+  }
+
+  /* ========== 打印 ========== */
+  @media print {
+    .topbar, .sidebar, .back-top, .search-results, .copy-btn, .menu-toggle, .footer { display: none !important; }
+    .content { margin: 0; padding: 0; max-width: 100%; }
+    body { font-size: 12px; }
+    .code-block { break-inside: avoid; }
+    h2.section-title, h3, h4 { break-after: avoid; }
+    a { color: var(--text); text-decoration: none; }
+  }
+</style>
+</head>
+<body>
+
+<!-- ========== 顶栏 ========== -->
+<header class="topbar">
+  <button class="icon-btn menu-toggle" id="menuToggle" aria-label="菜单">
+    <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 6h18M3 12h18M3 18h18"/></svg>
+  </button>
+  <a href="#top" class="brand">
+    <div class="brand-logo">CH</div>
+    <div class="brand-text">
+      ClickHouse 操作指南
+      <small>业务元数据 · 备份</small>
+    </div>
+  </a>
+  <div class="search-wrap">
+    <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+    <input type="text" class="search-input" id="searchInput" placeholder="搜索指南内容... (按 / 快捷聚焦)" autocomplete="off">
+  </div>
+  <div class="topbar-actions">
+    <button class="icon-btn" id="printBtn" title="打印 / 导出 PDF" aria-label="打印">
+      <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+    </button>
+  </div>
+</header>
+
+<!-- ========== 搜索结果 ========== -->
+<div class="search-results" id="searchResults"></div>
+
+<!-- ========== 侧边栏 ========== -->
+<aside class="sidebar" id="sidebar">
+  <div class="nav-section">
+    <div class="nav-section-title">开始</div>
+    <a class="nav-link" href="#top">首页</a>
+    <a class="nav-link" href="#how-to-use">如何使用本指南</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">第一部分 · 业务元数据</div>
+    <a class="nav-link" href="#part1">1. 业务元数据操作指南</a>
+    <a class="nav-link sub" href="#md-overview">1.1 概述与意义</a>
+    <a class="nav-link sub" href="#md-storage">1.2 元数据存储机制</a>
+    <a class="nav-link sub" href="#md-query">1.3 常用元数据查询</a>
+    <a class="nav-link sub" href="#md-ddl">1.4 元数据变更操作</a>
+    <a class="nav-link sub" href="#md-distributed">1.5 分布式表与元数据</a>
+    <a class="nav-link sub" href="#md-export">1.6 导出与迁移</a>
+    <a class="nav-link sub" href="#md-monitor">1.7 元数据监控</a>
+    <a class="nav-link sub" href="#md-best">1.8 最佳实践</a>
+    <a class="nav-link sub" href="#md-faq">1.9 常见问题排查</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">第二部分 · 备份恢复</div>
+    <a class="nav-link" href="#part2">2. 备份操作指南</a>
+    <a class="nav-link sub" href="#bk-overview">2.1 概述与备份策略</a>
+    <a class="nav-link sub" href="#bk-methods">2.2 备份方式总览</a>
+    <a class="nav-link sub" href="#bk-backup-cmd">2.3 BACKUP/RESTORE</a>
+    <a class="nav-link sub" href="#bk-clickhouse-backup">2.4 clickhouse-backup 工具</a>
+    <a class="nav-link sub" href="#bk-freeze">2.5 ALTER TABLE FREEZE</a>
+    <a class="nav-link sub" href="#bk-metadata">2.6 元数据备份</a>
+    <a class="nav-link sub" href="#bk-cluster">2.7 集群备份策略</a>
+    <a class="nav-link sub" href="#bk-dr-drill">2.8 灾难恢复演练</a>
+    <a class="nav-link sub" href="#bk-monitor">2.9 监控与告警</a>
+    <a class="nav-link sub" href="#bk-best">2.10 最佳实践</a>
+  </div>
+
+  <div class="nav-section">
+    <div class="nav-section-title">附录</div>
+    <a class="nav-link" href="#appendix">附录 · 命令速查表</a>
+  </div>
+</aside>
+
+<!-- ========== 主内容 ========== -->
+<main class="content" id="top">
+
+  <!-- Hero -->
+  <section class="hero">
+    <h1>ClickHouse 操作指南</h1>
+    <p>本手册系统讲解 ClickHouse <strong>业务元数据管理</strong>与<strong>备份恢复</strong>两大核心运维主题，覆盖原理、命令、参数、场景案例、故障排查与最佳实践，适用于 22.x 及以上版本，单机与集群场景通用。</p>
+    <div class="hero-meta">
+      <span><span class="badge badge-red">PART 1</span> 业务元数据操作指南</span>
+      <span><span class="badge badge-blue">PART 2</span> 备份操作指南</span>
+      <span><span class="badge badge-green">v1.0</span> 适用 ClickHouse 22.x+</span>
+    </div>
+  </section>
+
+  <section id="how-to-use">
+    <h3>如何使用本指南</h3>
+    <ul>
+      <li>左侧目录可快速跳转到任意章节，滚动时当前章节会自动高亮。</li>
+      <li>顶部搜索框支持全文检索（按 <code>/</code> 快捷聚焦），输入关键词即时筛选匹配段落。</li>
+      <li>所有命令块右上角均有「复制」按钮，便于直接粘贴使用。</li>
+      <li>右上角打印按钮可一键导出 PDF 离线查阅。</li>
+      <li><span class="badge badge-blue">提示</span> 蓝色框为补充信息；<span class="badge" style="background:#fff8c5;color:#633c01;">注意</span> 黄色框为重要提醒；<span class="badge badge-red">警告</span> 红色框为高危操作前必读。</li>
+    </ul>
+  </section>
+
+  <hr>
+
+  <!-- ============================================ -->
+  <!-- 第一部分：业务元数据操作指南 -->
+  <!-- ============================================ -->
+  <h2 class="section-title" id="part1"><span class="num">1</span>业务元数据操作指南</h2>
+
+  <h3 id="md-overview">1.1 概述与意义</h3>
+  <h4>什么是业务元数据</h4>
+  <p>在 ClickHouse 中，<strong>元数据（Metadata）</strong>是描述数据的数据，包括：数据库与表的清单、表结构定义（列、类型、引擎、分区键、排序键、TTL）、分布表与副本拓扑、用户与权限、字典、视图与物化视图等。它们本身不存储业务数据，但决定了数据如何被组织、复制、查询与生命周期管理。</p>
+  <p><strong>业务元数据</strong>则是在技术元数据之上叠加的业务语义，例如：表的中文注释、列的业务含义、数据归属团队、敏感等级、上下游血缘等。良好的业务元数据管理是数据治理、自助分析、合规审计的基础。</p>
+
+  <h4>元数据管理的意义</h4>
+  <ul>
+    <li><strong>可发现性</strong>：分析人员能快速定位"我需要的数据在哪、长什么样"。</li>
+    <li><strong>可维护性</strong>：DDL 变更可追溯、可回滚，避免"幽灵表"堆积。</li>
+    <li><strong>可治理性</strong>：表/列注释、归属、敏感等级支撑数据分类分级与权限审计。</li>
+    <li><strong>可恢复性</strong>：元数据完整备份是数据恢复的前提——没有 schema，数据文件无法 attach。</li>
+    <li><strong>性能可控</strong>：分区/分片/TTL 设计直接影响查询性能与存储成本。</li>
+  </ul>
+
+  <div class="callout callout-info">
+    <div class="callout-title">ℹ️ 关键认知</div>
+    <p>ClickHouse 的元数据是<strong>数据可读性的前提</strong>。一旦 <code>/var/lib/clickhouse/metadata/</code> 损坏或丢失，即使数据 part 文件完好，也无法直接 attach 表。因此元数据备份与数据备份同等重要。</p>
+  </div>
+
+  <h3 id="md-storage">1.2 元数据存储机制</h3>
+  <p>ClickHouse 的元数据分布在四个位置，理解它们的职责是排障与备份的基础：</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>存储位置</th><th>内容</th><th>类型</th><th>变更方式</th></tr></thead>
+      <tbody>
+        <tr><td><code>/var/lib/clickhouse/metadata/</code></td><td>库/表的 DDL SQL 文件（<code>.sql</code>）</td><td>持久化文件</td><td>DDL 自动写入</td></tr>
+        <tr><td><code>system</code> 数据库</td><td>只读系统表（tables、columns、parts、clusters 等）</td><td>内存/运行时</td><td>查询自动反映</td></tr>
+        <tr><td>ZooKeeper / Keeper</td><td>Replicated 表的副本分片状态、DDL 队列</td><td>分布式协调</td><td>引擎自动同步</td></tr>
+        <tr><td>配置文件 <code>/etc/clickhouse-server/</code></td><td>集群拓扑、macros、用户、磁盘</td><td>XML/YAML</td><td>手动编辑 + reload</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>SQL 元数据文件结构</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">text</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 每个数据库对应一个目录</span>
+/var/lib/clickhouse/metadata/
+├── default/
+│   └── hits.sql              <span class="tok-cmt"># CREATE TABLE 的完整 DDL</span>
+├── analytics/
+│   ├── events.sql            <span class="tok-cmt"># 建库语句</span>
+│   └── logs.sql
+└── system/                   <span class="tok-cmt"># 系统库（不持久化）</span>
+
+<span class="tok-cmt"># 文件内容示例 hits.sql</span>
+<span class="tok-kw">ATTACH TABLE</span> hits (
+  `id` UInt64,
+  `event_time` DateTime,
+  ...
+)
+<span class="tok-kw">ENGINE</span> = MergeTree
+<span class="tok-kw">PARTITION BY</span> toYYYYMM(event_time)
+<span class="tok-kw">ORDER BY</span> (id, event_time)
+<span class="tok-kw">SETTINGS</span> index_granularity = <span class="tok-num">8192</span>;</pre>
+  </div>
+  <p>注意文件使用 <code>ATTACH TABLE</code> 而非 <code>CREATE TABLE</code>——这是 ClickHouse 启动时重新挂载已存在数据 part 的机制。手工编辑这些文件<strong>极其危险</strong>，应通过 DDL 命令变更。</p>
+
+  <h4>ZooKeeper 中的元数据路径</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">text</span><button class="copy-btn">复制</button></div>
+<pre>/clickhouse/tables/{shard}/{database}/{table}/
+├── replicas/                <span class="tok-cmt"># 副本清单与状态</span>
+│   ├── replica1/
+│   │   ├── host
+│   │   ├── pointer          <span class="tok-cmt"># 当前最新 log pointer</span>
+│   │   └── is_active
+│   └── replica2/
+├── log/                     <span class="tok-cmt"># DDL 操作日志队列</span>
+│   ├── log-0000000000
+│   └── log-0000000001
+└── columns/                 <span class="tok-cmt"># 列定义快照</span></pre>
+  </div>
+
+  <h3 id="md-query">1.3 常用元数据查询</h3>
+  <p>日常运维 90% 的元数据需求可通过 <code>system</code> 数据库完成。以下是高频查询模板：</p>
+
+  <h4>数据库与表清单</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 列出所有数据库（含引擎、注释）</span>
+<span class="tok-kw">SELECT</span> name, engine, comment, uuid
+<span class="tok-kw">FROM</span> system.databases
+<span class="tok-kw">ORDER BY</span> name;
+
+<span class="tok-cmt">-- 列出某库下所有表 + 引擎 + 行数 + 占用空间</span>
+<span class="tok-kw">SELECT</span>
+    name,
+    engine,
+    total_rows,
+    formatReadableSize(total_bytes) <span class="tok-kw">AS</span> size,
+    metadata_modification_time <span class="tok-kw">AS</span> last_ddl
+<span class="tok-kw">FROM</span> system.tables
+<span class="tok-kw">WHERE</span> database = <span class="tok-str">'analytics'</span>
+<span class="tok-kw">ORDER BY</span> total_bytes <span class="tok-kw">DESC</span>;</pre>
+  </div>
+
+  <h4>表结构查询</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 完整建表语句（最权威）</span>
+<span class="tok-kw">SHOW CREATE TABLE</span> analytics.events;
+
+<span class="tok-cmt">-- 列信息（含类型、默认值、注释）</span>
+<span class="tok-kw">DESCRIBE</span> analytics.events;
+<span class="tok-kw">SELECT</span> name, type, default_kind, default_expression, comment
+<span class="tok-kw">FROM</span> system.columns
+<span class="tok-kw">WHERE</span> database = <span class="tok-str">'analytics'</span> <span class="tok-kw">AND</span> table = <span class="tok-str">'events'</span>;</pre>
+  </div>
+
+  <h4>分区与数据 part</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 查看表的分区及每个分区大小</span>
+<span class="tok-kw">SELECT</span>
+    partition,
+    formatReadableSize(sum(bytes_on_disk)) <span class="tok-kw">AS</span> size,
+    sum(rows) <span class="tok-kw">AS</span> rows,
+    count() <span class="tok-kw">AS</span> part_count
+<span class="tok-kw">FROM</span> system.parts
+<span class="tok-kw">WHERE</span> database = <span class="tok-str">'analytics'</span> <span class="tok-kw">AND</span> table = <span class="tok-str">'events'</span>
+  <span class="tok-kw">AND</span> active
+<span class="tok-kw">GROUP BY</span> partition
+<span class="tok-kw">ORDER BY</span> partition <span class="tok-kw">DESC</span>;
+
+<span class="tok-cmt">-- 检查 mutation 进度（UPDATE/DELETE 异步任务）</span>
+<span class="tok-kw">SELECT</span> database, table, mutation_id, command, is_done, parts_to_do
+<span class="tok-kw">FROM</span> system.mutations
+<span class="tok-kw">WHERE</span> <span class="tok-kw">NOT</span> is_done;</pre>
+  </div>
+
+  <h4>集群拓扑与副本状态</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 集群分片副本拓扑</span>
+<span class="tok-kw">SELECT</span> cluster, shard_num, replica_num, host_name, host_address, port
+<span class="tok-kw">FROM</span> system.clusters
+<span class="tok-kw">WHERE</span> cluster = <span class="tok-str">'my_cluster'</span>;
+
+<span class="tok-cmt">-- ReplicatedMergeTree 副本健康度</span>
+<span class="tok-kw">SELECT</span>
+    database, table,
+    is_leader, is_readonly, is_session_expired,
+    absolute_delay,   <span class="tok-cmt">-- 落后主副本的 log 条数</span>
+    queue_size        <span class="tok-cmt">-- 待执行的复制队列</span>
+<span class="tok-kw">FROM</span> system.replicas
+<span class="tok-kw">WHERE</span> database = <span class="tok-str">'analytics'</span>
+<span class="tok-kw">ORDER BY</span> absolute_delay <span class="tok-kw">DESC</span>;</pre>
+  </div>
+  <div class="callout callout-warn">
+    <div class="callout-title">⚠️ 重点指标</div>
+    <p><code>absolute_delay</code> 持续大于 0 表示副本落后；<code>queue_size</code> 持续增长表示复制队列堆积；<code>is_readonly=1</code> 通常意味着 ZooKeeper 会话失联，副本进入只读保护状态。</p>
+  </div>
+
+  <h4>字典与视图</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 字典元数据</span>
+<span class="tok-kw">SELECT</span> name, type, source, status, lifetime_min, lifetime_max
+<span class="tok-kw">FROM</span> system.dictionaries;
+
+<span class="tok-cmt">-- 物化视图依赖关系（找出物化视图读哪些表写哪些表）</span>
+<span class="tok-kw">SELECT</span> database, name, as_select, to_table
+<span class="tok-kw">FROM</span> system.tables
+<span class="tok-kw">WHERE</span> engine = <span class="tok-str">'MaterializedView'</span>;</pre>
+  </div>
+
+  <h3 id="md-ddl">1.4 元数据变更操作</h3>
+
+  <h4>建库建表</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-kw">CREATE DATABASE</span> analytics
+<span class="tok-kw">ENGINE</span> = Ordinary   <span class="tok-cmt">-- 或 Atomic（默认，支持原子 DROP/RENAME）</span>
+<span class="tok-kw">COMMENT</span> <span class="tok-str">'业务分析库 - 归属数据团队'</span>;
+
+<span class="tok-kw">CREATE TABLE</span> analytics.events
+(
+    id          UInt64,
+    user_id     UInt64 <span class="tok-kw">CODEC</span>(Delta, ZSTD),
+    event_time  DateTime <span class="tok-kw">CODEC</span>(DoubleDelta, ZSTD),
+    event_type  LowCardinality(String),
+    props       Map(String, String),
+    <span class="tok-kw">INDEX</span> idx_user user_id <span class="tok-kw">TYPE</span> bloom_filter <span class="tok-kw">GRANULARITY</span> <span class="tok-num">1</span>
+)
+<span class="tok-kw">ENGINE</span> = MergeTree
+<span class="tok-kw">PARTITION BY</span> toYYYYMMDD(event_time)
+<span class="tok-kw">ORDER BY</span> (event_type, user_id, event_time)
+<span class="tok-kw">TTL</span> event_time + <span class="tok-kw">INTERVAL</span> <span class="tok-num">90</span> <span class="tok-kw">DAY</span>
+<span class="tok-kw">SETTINGS</span> index_granularity = <span class="tok-num">8192</span>,
+         ttl_only_drop_parts = <span class="tok-num">1</span>
+<span class="tok-kw">COMMENT</span> <span class="tok-str">'用户行为事件表 - 增量埋点'</span>;</pre>
+  </div>
+
+  <h4>列变更（ALTER）</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 新增列（默认追加到末尾，避免重写数据）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events
+  <span class="tok-kw">ADD COLUMN</span> channel String <span class="tok-kw">DEFAULT</span> <span class="tok-str">'unknown'</span> <span class="tok-kw">AFTER</span> event_type;
+
+<span class="tok-cmt">-- 修改列类型（部分类型可原地转换，否则需重写）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events
+  <span class="tok-kw">MODIFY COLUMN</span> user_id UInt64 <span class="tok-kw">CODEC</span>(Delta, ZSTD);
+
+<span class="tok-cmt">-- 重命名列</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">RENAME COLUMN</span> props <span class="tok-kw">TO</span> properties;
+
+<span class="tok-cmt">-- 添加/修改列注释（业务元数据维护的关键）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events
+  <span class="tok-kw">MODIFY COLUMN</span> user_id <span class="tok-kw">COMMENT</span> <span class="tok-str">'用户唯一ID - 关联 users 表主键'</span>;
+
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">MODIFY COMMENT</span> <span class="tok-str">'用户行为事件表 v2'</span>;
+
+<span class="tok-cmt">-- 删除列（注意会触发数据重写，大表慎用）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">DROP COLUMN</span> deprecated_field;</pre>
+  </div>
+
+  <div class="callout callout-warn">
+    <div class="callout-title">⚠️ ALTER 注意事项</div>
+    <p>ClickHouse 的 <code>ALTER</code> 是<strong>异步元数据变更</strong>，命令返回不代表完成。需通过 <code>system.mutations</code> 跟踪进度。在 Replicated 表上还会通过 ZooKeeper 在副本间同步。删除列、修改列类型会触发数据重写，大表（TB 级）可能耗时数小时。</p>
+  </div>
+
+  <h4>集群级 DDL（ON CLUSTER）</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 在集群所有节点上同步执行（Replicated 表只需在每分片一个副本执行）</span>
+<span class="tok-kw">CREATE TABLE</span> analytics.events <span class="tok-kw">ON CLUSTER</span> my_cluster (...)
+<span class="tok-kw">ENGINE</span> = ReplicatedMergeTree(
+    <span class="tok-str">'/clickhouse/tables/{shard}/analytics/events'</span>,
+    <span class="tok-str">'{replica}'</span>
+)
+...;
+
+<span class="tok-cmt">-- 查看分布式 DDL 队列状态</span>
+<span class="tok-kw">SELECT</span> entry, host_name, status, exception
+<span class="tok-kw">FROM</span> system.distributed_ddl_queue
+<span class="tok-kw">ORDER BY</span> entry <span class="tok-kw">DESC</span> <span class="tok-kw">LIMIT</span> <span class="tok-num">20</span>;</pre>
+  </div>
+
+  <h4>分区管理</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 卸载分区（数据保留在磁盘，元数据移除，表上看不到）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">DETACH PARTITION</span> <span class="tok-str">'20260101'</span>;
+
+<span class="tok-cmt">-- 重新挂载</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">ATTACH PARTITION</span> <span class="tok-str">'20260101'</span>;
+
+<span class="tok-cmt">-- 跨表迁移分区（要求结构完全一致）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events
+  <span class="tok-kw">MOVE PARTITION</span> <span class="tok-str">'20260101'</span> <span class="tok-kw">TO</span> analytics.events_archive;
+
+<span class="tok-cmt">-- 删除分区（不可逆，谨慎）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">DROP PARTITION</span> <span class="tok-str">'20250101'</span>;</pre>
+  </div>
+
+  <h3 id="md-distributed">1.5 分布式表与元数据</h3>
+  <h4>Distributed 表工作机制</h4>
+  <p><code>Distributed</code> 表本身不存储数据，它是一个"路由层"：保存目标集群名、分片权重、分片键、内部表名等元数据。查询时把请求下发到各分片的本地表，再聚合结果返回。</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 本地表（每个分片上创建）</span>
+<span class="tok-kw">CREATE TABLE</span> analytics.events_local <span class="tok-kw">ON CLUSTER</span> my_cluster (...)
+<span class="tok-kw">ENGINE</span> = ReplicatedMergeTree(
+    <span class="tok-str">'/clickhouse/tables/{shard}/analytics/events_local'</span>,
+    <span class="tok-str">'{replica}'</span>
+)
+<span class="tok-kw">PARTITION BY</span> toYYYYMMDD(event_time)
+<span class="tok-kw">ORDER BY</span> (event_type, user_id, event_time);
+
+<span class="tok-cmt">-- 分布式表（在任一节点创建即可，所有节点都可见）</span>
+<span class="tok-kw">CREATE TABLE</span> analytics.events_all <span class="tok-kw">ON CLUSTER</span> my_cluster
+<span class="tok-kw">AS</span> analytics.events_local
+<span class="tok-kw">ENGINE</span> = Distributed(
+    <span class="tok-str">'my_cluster'</span>,        <span class="tok-cmt">-- 集群名（来自 config）</span>
+    <span class="tok-str">'analytics'</span>,         <span class="tok-cmt">-- 目标库</span>
+    <span class="tok-str">'events_local'</span>,      <span class="tok-cmt">-- 本地表名</span>
+    rand()                <span class="tok-cmt">-- 分片键（哈希分布）</span>
+);</pre>
+  </div>
+
+  <h4>macros 配置</h4>
+  <p>上面的 <code>{shard}</code> 和 <code>{replica}</code> 是宏，需在每台服务器的配置文件中定义：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">xml</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">&lt;!-- /etc/clickhouse-server/config.d/macros.xml --&gt;</span>
+&lt;clickhouse&gt;
+    &lt;macros&gt;
+        &lt;shard&gt;01&lt;/shard&gt;
+        &lt;replica&gt;node01&lt;/replica&gt;
+        &lt;cluster&gt;my_cluster&lt;/cluster&gt;
+    &lt;/macros&gt;
+&lt;/clickhouse&gt;</pre>
+  </div>
+  <p>不同节点配置不同值，DDL 模板就能在各节点展开为不同的 ZooKeeper 路径与副本名。</p>
+
+  <div class="callout callout-info">
+    <div class="callout-title">💡 命名约定</div>
+    <p>业界通行约定：本地表后缀 <code>_local</code>，分布式表后缀 <code>_all</code>（或 <code>_distributed</code>）。这能让查询者一眼分辨该表是物理表还是路由表。</p>
+  </div>
+
+  <h3 id="md-export">1.6 元数据导出与迁移</h3>
+  <h4>导出 DDL</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 导出整个库的所有表 DDL</span>
+clickhouse-client --query=<span class="tok-str">"</span>
+<span class="tok-str">SELECT group_concat(ddl, ';\n') FROM (</span>
+<span class="tok-str">  SELECT concat('DROP TABLE IF EXISTS ', database, '.', name, ';') AS ddl</span>
+<span class="tok-str">  FROM system.tables WHERE database = 'analytics'</span>
+<span class="tok-str">  UNION ALL</span>
+<span class="tok-str">  SELECT show_create_table FROM system.tables WHERE database = 'analytics'</span>
+<span class="tok-str">)"</span> &gt; analytics_schema.sql
+
+<span class="tok-cmt"># 或者使用原生工具（推荐）</span>
+clickhouse-client --dump-metadata --database=analytics &gt; analytics_full.sql
+
+<span class="tok-cmt"># 导出单个表的 DDL</span>
+clickhouse-client --query=<span class="tok-str">"SHOW CREATE TABLE analytics.events FORMAT TabSeparatedRaw"</span> \
+  &gt; events_ddl.sql</pre>
+  </div>
+
+  <h4>跨集群迁移流程</h4>
+  <ol>
+    <li><strong>导出源端 DDL</strong>：使用上面的命令导出 schema。</li>
+    <li><strong>修改引擎</strong>：如果目标集群拓扑不同，调整 <code>ReplicatedMergeTree</code> 的 ZooKeeper 路径与 macros。</li>
+    <li><strong>在目标集群执行 DDL</strong>：用 <code>ON CLUSTER</code> 创建本地表与分布式表。</li>
+    <li><strong>迁移数据</strong>：用 <code>INSERT INTO ... SELECT</code> 跨集群拉取，或用 <code>clickhouse-backup</code> 备份恢复，或用 <code>remote()</code> 表函数。</li>
+    <li><strong>校验</strong>：对比两端的 <code>system.parts</code> 行数与校验和。</li>
+  </ol>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 使用 remote() 表函数跨集群拉数据</span>
+<span class="tok-kw">INSERT INTO</span> analytics.events_local
+<span class="tok-kw">SELECT</span> *
+<span class="tok-kw">FROM</span> remote(<span class="tok-str">'source-host:9000'</span>, analytics.events_local, <span class="tok-str">'user'</span>, <span class="tok-str">'password'</span>)
+<span class="tok-kw">WHERE</span> event_time &gt;= <span class="tok-str">'2026-07-01'</span>;</pre>
+  </div>
+
+  <h3 id="md-monitor">1.7 元数据监控</h3>
+  <h4>关键监控指标</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>来源</th><th>告警阈值</th></tr></thead>
+      <tbody>
+        <tr><td>表总数</td><td><code>count() FROM system.tables</code></td><td>趋势异常增长</td></tr>
+        <tr><td>每表 part 数</td><td><code>system.parts</code></td><td>&gt; 300（合并跟不上）</td></tr>
+        <tr><td>Replicated 副本延迟</td><td><code>system.replicas.absolute_delay</code></td><td>&gt; 1000 持续 5 分钟</td></tr>
+        <tr><td>复制队列堆积</td><td><code>system.replicas.queue_size</code></td><td>&gt; 10000</td></tr>
+        <tr><td>只读副本</td><td><code>system.replicas.is_readonly=1</code></td><td>立即告警</td></tr>
+        <tr><td>未完成 mutation</td><td><code>system.mutations WHERE NOT is_done</code></td><td>&gt; 1 小时</td></tr>
+        <tr><td>ZooKeeper 会话过期</td><td><code>system.replicas.is_session_expired=1</code></td><td>立即告警</td></tr>
+        <tr><td>分布式 DDL 队列失败</td><td><code>system.distributed_ddl_queue</code></td><td>status != OK</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>元数据一致性修复</h4>
+  <p>当副本元数据不一致（如某副本缺列、缺分区）时，按以下顺序处理：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 1. 强制同步副本（从其他副本拉取缺失的元数据日志）</span>
+<span class="tok-kw">SYSTEM SYNC REPLICA</span> analytics.events_local;
+
+<span class="tok-cmt">-- 2. 重启复制队列</span>
+<span class="tok-kw">SYSTEM RESTART REPLICA</span> analytics.events_local;
+
+<span class="tok-cmt">-- 3. 严重不一致时，detach 后重新 attach（数据不丢，重新拉元数据）</span>
+<span class="tok-kw">DETACH TABLE</span> analytics.events_local;
+<span class="tok-kw">ATTACH TABLE</span> analytics.events_local;
+
+<span class="tok-cmt">-- 4. 极端情况：删除副本注册，重新加入</span>
+<span class="tok-kw">SYSTEM DROP REPLICA</span> <span class="tok-str">'node01'</span> <span class="tok-kw">FROM</span> TABLE analytics.events_local;</pre>
+  </div>
+  <div class="callout callout-danger">
+    <div class="callout-title">⛔ 高危操作</div>
+    <p><code>SYSTEM DROP REPLICA</code> 会从 ZooKeeper 删除该副本的注册信息，<strong>仅用于副本已永久下线</strong>的场景。对仍在线的副本执行会导致该副本的数据被孤立。</p>
+  </div>
+
+  <h3 id="md-best">1.8 最佳实践</h3>
+
+  <h4>命名规范</h4>
+  <ul>
+    <li>库：<code>snake_case</code>，按业务域划分（如 <code>analytics</code>、<code>user_center</code>、<code>billing</code>）。</li>
+    <li>表：<code>{业务域}_{实体}_{粒度}</code>，如 <code>analytics_events_daily</code>。</li>
+    <li>本地表统一 <code>_local</code> 后缀，分布式表统一 <code>_all</code> 后缀。</li>
+    <li>物化视图 <code>mv_</code> 前缀，普通视图 <code>view_</code> 前缀，字典 <code>dict_</code> 前缀。</li>
+    <li>避免使用 ClickHouse 保留字与中文。</li>
+  </ul>
+
+  <h4>注释规范</h4>
+  <ul>
+    <li>库与表必须有 <code>COMMENT</code>，说明业务用途、归属团队、SLA。</li>
+    <li>关键列必须有 <code>COMMENT</code>，说明业务含义、单位、取值范围。</li>
+    <li>敏感字段（手机号、身份证）应注释其脱敏规则。</li>
+    <li>定期审计：<code>SELECT * FROM system.columns WHERE comment = ''</code> 找出未注释列。</li>
+  </ul>
+
+  <h4>分区与分片设计</h4>
+  <ul>
+    <li><strong>分区键</strong>：按时间（<code>toYYYYMM</code> 或 <code>toYYYYMMDD</code>），便于 TTL 与按分区淘汰。单分区数据量建议 1GB~50GB。</li>
+    <li><strong>排序键</strong>：高基数过滤列在前，低基数列在后，避免把高基数列放最后。</li>
+    <li><strong>分片键</strong>：用 <code>hash(user_id)</code> 或 <code>rand()</code> 保证均匀；按用户分片利于点查。</li>
+    <li><strong>避免过度分区</strong>：单表分区数 &gt; 1000 会拖慢 <code>system.parts</code> 查询与启动加载。</li>
+  </ul>
+
+  <h4>TTL 设计</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 热数据 30 天后移到 SSD，90 天后删除</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events
+  <span class="tok-kw">MODIFY TTL</span>
+    event_time + <span class="tok-kw">INTERVAL</span> <span class="tok-num">30</span> <span class="tok-kw">DAY</span> <span class="tok-kw">TO VOLUME</span> <span class="tok-str">'cold'</span>,
+    event_time + <span class="tok-kw">INTERVAL</span> <span class="tok-num">90</span> <span class="tok-kw">DAY</span> <span class="tok-kw">DELETE</span>;</pre>
+  </div>
+
+  <h4>权限管理</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 基于角色的访问控制（RBAC，21.x+ 推荐）</span>
+<span class="tok-kw">CREATE ROLE</span> analytics_reader;
+<span class="tok-kw">GRANT SELECT ON</span> analytics.* <span class="tok-kw">TO</span> analytics_reader;
+
+<span class="tok-kw">CREATE ROLE</span> analytics_writer;
+<span class="tok-kw">GRANT INSERT, SELECT ON</span> analytics.* <span class="tok-kw">TO</span> analytics_writer;
+
+<span class="tok-kw">CREATE USER</span> analyst_alice <span class="tok-kw">IDENTIFIED WITH</span> sha256_password <span class="tok-kw">BY</span> <span class="tok-str">'***'</span>;
+<span class="tok-kw">GRANT</span> analytics_reader <span class="tok-kw">TO</span> analyst_alice;
+
+<span class="tok-cmt">-- 限制资源（行数、内存、查询时长）</span>
+<span class="tok-kw">CREATE SETTINGS PROFILE</span> analyst_profile
+  <span class="tok-kw">SETTINGS</span> max_rows_to_read = <span class="tok-num">100000000</span>,
+           max_execution_time = <span class="tok-num">60</span>;
+<span class="tok-kw">GRANT</span> analyst_profile <span class="tok-kw">TO</span> analytics_reader;</pre>
+  </div>
+
+  <h3 id="md-faq">1.9 常见问题排查</h3>
+
+  <h4>Q1: "Metadata on replica is not up to date"</h4>
+  <p><strong>原因</strong>：副本启动时发现 ZooKeeper 中记录的列结构与本地 <code>.sql</code> 文件不符。</p>
+  <p><strong>处理</strong>：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 1. 确认是否本地元数据落后于 ZooKeeper</span>
+<span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> system.replicas
+<span class="tok-kw">WHERE</span> table = <span class="tok-str">'events_local'</span>;
+
+<span class="tok-cmt">-- 2. 强制拉取最新元数据</span>
+<span class="tok-kw">SYSTEM SYNC REPLICA</span> analytics.events_local;
+
+<span class="tok-cmt">-- 3. 仍失败则 detach 后 attach（保留数据 part）</span>
+<span class="tok-kw">DETACH TABLE</span> analytics.events_local;
+<span class="tok-kw">ATTACH TABLE</span> analytics.events_local;</pre>
+  </div>
+
+  <h4>Q2: ZooKeeper session expired，副本变只读</h4>
+  <p><strong>原因</strong>：网络抖动或 ZooKeeper 过载，会话超时。ClickHouse 进入只读保护，禁止写入。</p>
+  <p><strong>处理</strong>：检查 ZooKeeper 健康（<code>ruok</code> / <code>mntr</code>），重启会话：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 检查 ZK 健康</span>
+echo ruok | nc zk1 2181
+echo mntr | nc zk1 2181 | grep -E <span class="tok-str">'zk_watch_count|zk_outstanding_requests'</span>
+
+<span class="tok-cmt"># 重启 ClickHouse 副本会话</span>
+clickhouse-client --query=<span class="tok-str">"SYSTEM RESTART REPLICA analytics.events_local"</span>
+
+<span class="tok-cmt"># 若多个表都只读，重启 server（最后手段）</span>
+systemctl restart clickhouse-server</pre>
+  </div>
+
+  <h4>Q3: 表突然"丢失"</h4>
+  <p><strong>可能原因</strong>：<code>DETACH</code> 后未 attach；<code>.sql</code> 文件被误删；<code>Atomic</code> 库的表被延迟 drop。</p>
+  <p><strong>排查</strong>：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 1. 检查数据 part 是否还在磁盘</span>
+ls /var/lib/clickhouse/data/analytics/events/
+
+<span class="tok-cmt"># 2. 检查 .sql 元数据文件</span>
+ls /var/lib/clickhouse/metadata/analytics/
+
+<span class="tok-cmt"># 3. 检查是否在 detached 区</span>
+ls /var/lib/clickhouse/data/analytics/events/detached/
+
+<span class="tok-cmt"># 4. 如数据还在但 .sql 丢了，可用 SHOW CREATE 在其他副本取 DDL 重建</span>
+clickhouse-client --query=<span class="tok-str">"SHOW CREATE TABLE analytics.events"</span></pre>
+  </div>
+
+  <h4>Q4: DDL 队列阻塞</h4>
+  <p><strong>原因</strong>：<code>ON CLUSTER</code> 命令在 ZooKeeper 的 <code>/clickhouse/task_queue/ddl</code> 排队，某个节点卡住会阻塞后续所有 DDL。</p>
+  <p><strong>处理</strong>：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 查看队列堆积</span>
+<span class="tok-kw">SELECT</span> entry, host_name, status, exception, age
+<span class="tok-kw">FROM</span> system.distributed_ddl_queue
+<span class="tok-kw">ORDER BY</span> entry <span class="tok-kw">DESC</span> <span class="tok-kw">LIMIT</span> <span class="tok-num">10</span>;
+
+<span class="tok-cmt">-- 强制终止卡住的 DDL（注意：仅终止等待中的，不影响已执行的）</span>
+<span class="tok-kw">SYSTEM KILL</span> DISTRIBUTED <span class="tok-kw">DDL</span> QUEUE;
+
+<span class="tok-cmt">-- 调整队列超时（避免单 DDL 卡死全集群）</span>
+<span class="tok-cmt"># 在 config.xml 设置 distributed_ddl_max_timeout = 180</span></pre>
+  </div>
+
+  <h4>Q5: part 数过多，合并跟不上</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 检查 part 数</span>
+<span class="tok-kw">SELECT</span> database, table, count() <span class="tok-kw">AS</span> parts, sum(rows) <span class="tok-kw">AS</span> rows
+<span class="tok-kw">FROM</span> system.parts
+<span class="tok-kw">WHERE</span> active
+<span class="tok-kw">GROUP BY</span> database, table
+<span class="tok-kw">HAVING</span> parts &gt; <span class="tok-num">100</span>
+<span class="tok-kw">ORDER BY</span> parts <span class="tok-kw">DESC</span>;
+
+<span class="tok-cmt">-- 触发手动合并（针对某分区）</span>
+<span class="tok-kw">OPTIMIZE TABLE</span> analytics.events <span class="tok-kw">FINAL</span>;
+
+<span class="tok-cmt">-- 调整合并线程</span>
+<span class="tok-cmt"># config.xml: background_pool_size = 16  (默认 16)</span>
+<span class="tok-cmt"># 避免过于频繁的小写入，建议攒批 &gt;= 10000 行/批</span></pre>
+  </div>
+
+  <hr>
+
+  <!-- ============================================ -->
+  <!-- 第二部分：备份操作指南 -->
+  <!-- ============================================ -->
+  <h2 class="section-title" id="part2"><span class="num">2</span>备份操作指南</h2>
+
+  <h3 id="bk-overview">2.1 概述与备份策略</h3>
+  <h4>为什么必须备份</h4>
+  <p>ClickHouse 经常被误以为"有副本就不用备份"。这是危险的误解。副本只能防御单节点硬件故障，无法防御：</p>
+  <ul>
+    <li><strong>人为误操作</strong>：<code>DROP TABLE</code>、错误的 <code>DELETE</code>、<code>TRUNCATE</code> 会被同步到所有副本。</li>
+    <li><strong>逻辑损坏</strong>：错误的 ETL 写入脏数据，问题会复制到所有副本。</li>
+    <li><strong>勒索软件/安全事件</strong>：攻击者删除数据时副本同步生效。</li>
+    <li><strong>区域性灾难</strong>：整个机房失联。</li>
+    <li><strong>升级失败</strong>：新版本不兼容导致无法回滚。</li>
+  </ul>
+
+  <h4>RTO / RPO 概念</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>含义</th><th>典型目标</th></tr></thead>
+      <tbody>
+        <tr><td><strong>RPO</strong> (Recovery Point Objective)</td><td>可容忍的数据丢失量（时间维度）</td><td>核心库 1 小时，分析库 24 小时</td></tr>
+        <tr><td><strong>RTO</strong> (Recovery Time Objective)</td><td>可容忍的业务中断时长</td><td>核心库 1 小时，分析库 4 小时</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>3-2-1 备份原则</h4>
+  <ul>
+    <li><strong>3</strong> 份数据副本（生产 + 2 份备份）</li>
+    <li><strong>2</strong> 种不同介质（如对象存储 + 磁带/本地磁盘）</li>
+    <li><strong>1</strong> 份异地存放（跨区域/跨云）</li>
+  </ul>
+
+  <div class="callout callout-danger">
+    <div class="callout-title">⛔ 红线</div>
+    <p><strong>副本 ≠ 备份</strong>。没有真实备份的 ClickHouse 集群，一次 <code>DROP TABLE</code> 误操作即可造成不可逆数据丢失。本指南的所有操作都以"备份必须独立于生产集群"为前提。</p>
+  </div>
+
+  <h3 id="bk-methods">2.2 备份方式总览</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>方式</th><th>版本</th><th>优点</th><th>缺点</th><th>推荐度</th></tr></thead>
+      <tbody>
+        <tr><td><code>BACKUP</code> / <code>RESTORE</code></td><td>22.8+ GA</td><td>原生支持、增量、S3、原子性</td><td>需 22.8+；早期版本部分功能不稳</td><td>★★★★★</td></tr>
+        <tr><td><code>clickhouse-backup</code> 工具</td><td>全版本</td><td>功能完善、S3/GCS/Azure、自动化</td><td>需第三方维护</td><td>★★★★☆</td></tr>
+        <tr><td><code>ALTER TABLE ... FREEZE</code></td><td>全版本</td><td>原生、零拷贝（硬链接）</td><td>仅本地、需手动 rsync、不支持增量</td><td>★★★☆☆</td></tr>
+        <tr><td>文件系统快照（LVM/ZFS）</td><td>全版本</td><td>一致性高、瞬时</td><td>需特定文件系统</td><td>★★★☆☆</td></tr>
+        <tr><td>副本 + 异地容灾</td><td>全版本</td><td>实时连续</td><td>不能防误删</td><td>★★☆☆☆（辅助）</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="bk-backup-cmd">2.3 BACKUP / RESTORE 完整流程</h3>
+  <p>ClickHouse 22.8 GA 的原生备份恢复命令，是当前最推荐的方式。它支持表/库/全库级别的备份、增量备份、S3/GCS/Azure 远程存储。</p>
+
+  <h4>启用备份配置</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">xml</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">&lt;!-- /etc/clickhouse-server/config.d/backup.xml --&gt;</span>
+&lt;clickhouse&gt;
+    &lt;allowed_path&gt;/var/lib/clickhouse/backups&lt;/allowed_path&gt;
+    &lt;backups&gt;
+        &lt;disk&gt;
+            &lt;type&gt;local&lt;/type&gt;
+            &lt;path&gt;/var/lib/clickhouse/backups&lt;/path&gt;
+        &lt;/disk&gt;
+        &lt;disk&gt;
+            &lt;type&gt;s3&lt;/type&gt;
+            &lt;endpoint&gt;https://s3.amazonaws.com/my-backup-bucket/clickhouse/&lt;/endpoint&gt;
+            &lt;access_key_id&gt;AKIA...&lt;/access_key_id&gt;
+            &lt;secret_access_key&gt;***&lt;/secret_access_key&gt;
+        &lt;/disk&gt;
+    &lt;/backups&gt;
+&lt;/clickhouse&gt;</pre>
+  </div>
+
+  <h4>本地全量备份</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 备份单表</span>
+<span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 备份整库</span>
+<span class="tok-kw">BACKUP DATABASE</span> analytics
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'analytics_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 备份全库（除 system 外）</span>
+<span class="tok-kw">BACKUP ALL</span>
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'full_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 查看备份任务进度（异步执行）</span>
+<span class="tok-kw">SELECT</span> id, status, num_files_processed, total_files, start_time, end_time
+<span class="tok-kw">FROM</span> system.backups
+<span class="tok-kw">ORDER BY</span> start_time <span class="tok-kw">DESC</span> <span class="tok-kw">LIMIT</span> <span class="tok-num">10</span>;</pre>
+  </div>
+
+  <h4>备份到 S3</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> S3(<span class="tok-str">'https://s3.amazonaws.com/my-bucket/clickhouse/events_20260717.zip'</span>,
+       <span class="tok-str">'AKIA...'</span>, <span class="tok-str">'***'</span>);
+
+<span class="tok-cmt">-- 带压缩（zstd 显著减小体积）</span>
+<span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> S3(<span class="tok-str">'https://s3.amazonaws.com/my-bucket/clickhouse/events_20260717.zip'</span>,
+       <span class="tok-str">'AKIA...'</span>, <span class="tok-str">'***'</span>)
+<span class="tok-kw">SETTINGS</span> compression_method = <span class="tok-str">'zstd'</span>,
+         compression_level = <span class="tok-num">6</span>;</pre>
+  </div>
+
+  <h4>增量备份</h4>
+  <p>基于上一次全量或增量的备份基准，只备份变化部分。这是 <code>BACKUP</code> 命令的核心优势之一。</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 1. 周日做全量</span>
+<span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 2. 之后每天做增量（基准指向上一次备份）</span>
+<span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_inc_20260718.zip'</span>)
+<span class="tok-kw">SETTINGS</span> base_backup = Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-kw">BACKUP TABLE</span> analytics.events
+<span class="tok-kw">TO</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_inc_20260719.zip'</span>)
+<span class="tok-kw">SETTINGS</span> base_backup = Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_inc_20260718.zip'</span>);</pre>
+  </div>
+
+  <h4>RESTORE 恢复流程</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 恢复到原表（表必须不存在或结构兼容）</span>
+<span class="tok-kw">RESTORE TABLE</span> analytics.events
+<span class="tok-kw">FROM</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 恢复到新表（用于验证或数据分析）</span>
+<span class="tok-kw">RESTORE TABLE</span> analytics.events <span class="tok-kw">AS</span> analytics.events_restored
+<span class="tok-kw">FROM</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-kw">RESTORE TABLE</span> analytics.events <span class="tok-kw">AS</span> analytics.events_restored
+<span class="tok-kw">FROM</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>)
+<span class="tok-kw">SETTINGS</span> allow_different_database = <span class="tok-num">1</span>,
+         allow_different_table_def = <span class="tok-num">1</span>;
+
+<span class="tok-cmt">-- 增量恢复：需按顺序应用全量 + 各次增量</span>
+<span class="tok-kw">RESTORE TABLE</span> analytics.events
+<span class="tok-kw">FROM</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-kw">RESTORE TABLE</span> analytics.events
+<span class="tok-kw">FROM</span> Disk(<span class="tok-str">'backups'</span>, <span class="tok-str">'events_inc_20260718.zip'</span>);</pre>
+  </div>
+
+  <h4>校验备份完整性</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 查看备份内容清单</span>
+<span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> backup(<span class="tok-str">'events_full_20260717.zip'</span>);
+
+<span class="tok-cmt">-- 校验文件 checksum</span>
+<span class="tok-kw">SELECT</span> name, size, checksum
+<span class="tok-kw">FROM</span> backup(<span class="tok-str">'events_full_20260717.zip'</span>, <span class="tok-str">'data'</span>)
+<span class="tok-kw">WHERE</span> name <span class="tok-kw">LIKE</span> <span class="tok-str">'%.bin'</span>;</pre>
+  </div>
+
+  <div class="callout callout-tip">
+    <div class="callout-title">✅ 推荐策略</div>
+    <p><strong>每周日全量 + 每天增量 + 备份到 S3 跨区域</strong>，配合每月一次恢复演练，可达到 RPO=24h、RTO=2h 的标准。</p>
+  </div>
+
+  <h3 id="bk-clickhouse-backup">2.4 clickhouse-backup 工具</h3>
+  <p>社区开源工具 <code>clickhouse-backup</code>（非官方）是使用最广的第三方方案，支持全版本、自动 S3 上传、配置简单、自动化友好。</p>
+
+  <h4>安装</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 下载二进制</span>
+wget https://github.com/Altinity/clickhouse-backup/releases/download/v2.5.3/clickhouse-backup-linux-amd64.tar.gz
+tar -xzf clickhouse-backup-linux-amd64.tar.gz
+mv clickhouse-backup /usr/local/bin/
+chmod +x /usr/local/bin/clickhouse-backup
+
+<span class="tok-cmt"># 创建配置目录</span>
+mkdir -p /etc/clickhouse-backup
+chown clickhouse:clickhouse /etc/clickhouse-backup</pre>
+  </div>
+
+  <h4>配置 config.yml</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">yaml</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># /etc/clickhouse-backup/config.yml</span>
+general:
+  remote_storage: s3
+  max_file_size: 1073741824    <span class="tok-cmt"># 1GB</span>
+  disable_progress_bar: false
+  backups_to_keep_local: 7
+  backups_to_keep_remote: 30
+  log_level: info
+
+clickhouse:
+  username: backup_user
+  password: ***
+  host: localhost
+  port: 9000
+  data_path: /var/lib/clickhouse/
+  skip_tables:
+    - system.*
+    - INFORMATION_SCHEMA.*
+    - _INFORMATION_SCHEMA.*
+
+s3:
+  access_key: AKIA...
+  secret_key: ***
+  bucket: my-backup-bucket
+  region: us-east-1
+  path: clickhouse/
+  endpoint: ""
+  force_path_style: false
+  compression_level: 6
+  compression_format: zstd
+
+api:
+  listen: :7171
+  enable_metrics: true
+  enable_pprof: false</pre>
+  </div>
+
+  <h4>常用命令</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 创建本地备份（CREATE + FREEZE，硬链接方式，零拷贝）</span>
+clickhouse-backup create events_daily_20260717
+
+<span class="tok-cmt"># 上传到 S3</span>
+clickhouse-backup upload events_daily_20260717
+
+<span class="tok-cmt"># 列出所有备份（本地+远程）</span>
+clickhouse-backup list
+
+<span class="tok-cmt"># 从 S3 下载备份</span>
+clickhouse-backup download events_daily_20260717
+
+<span class="tok-cmt"># 恢复备份</span>
+clickhouse-backup restore events_daily_20260717
+
+<span class="tok-cmt"># 只恢复 schema（DDL）</span>
+clickhouse-backup restore --schema events_daily_20260717
+
+<span class="tok-cmt"># 只恢复数据</span>
+clickhouse-backup restore --data events_daily_20260717
+
+<span class="tok-cmt"># 删除备份</span>
+clickhouse-backup delete local events_daily_20260717
+clickhouse-backup delete remote events_daily_20260717</pre>
+  </div>
+
+  <h4>定时备份脚本</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># /etc/cron.d/clickhouse-backup</span>
+<span class="tok-cmt"># 每天 02:00 创建+上传备份</span>
+0 2 * * * clickhouse /usr/local/bin/clickhouse-backup create autonomous_$(date +\%Y\%m\%d_\%H\%M) &gt;&gt; /var/log/clickhouse-backup.log 2&gt;&amp;1
+0 3 * * * clickhouse /usr/local/bin/clickhouse-backup upload autonomous_$(date +\%Y\%m\%d_\%H\%M) &gt;&gt; /var/log/clickhouse-backup.log 2&gt;&amp;1
+
+<span class="tok-cmt"># 自动清理旧备份（保留 7 天本地、30 天远程，由 config 控制）</span>
+0 5 * * * clickhouse /usr/local/bin/clickhouse-backup clean &gt;&gt; /var/log/clickhouse-backup.log 2&gt;&amp;1</pre>
+  </div>
+
+  <h3 id="bk-freeze">2.5 ALTER TABLE FREEZE 传统方式</h3>
+  <p>22.8 之前版本的主要备份手段。原理是利用文件系统的硬链接——把数据 part 链接到 <code>/var/lib/clickhouse/shadow/</code>，零拷贝。</p>
+
+  <h4>操作步骤</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 1. 冻结整个表的所有分区</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">FREEZE</span>;
+
+<span class="tok-cmt">-- 2. 冻结指定分区</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">FREEZE PARTITION</span> <span class="tok-str">'20260717'</span>;
+
+<span class="tok-cmt">-- 3. 冻结到指定备份名（区分多次备份）</span>
+<span class="tok-kw">ALTER TABLE</span> analytics.events <span class="tok-kw">FREEZE WITH NAME</span> <span class="tok-str">'backup_20260717'</span>;</pre>
+  </div>
+
+  <h4>使用 rsync 同步到备份服务器</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 把 shadow 目录同步到备份机（硬链接→真实文件）</span>
+rsync -avz --progress \
+  /var/lib/clickhouse/shadow/ \
+  backup-server:/backups/clickhouse/20260717/
+
+<span class="tok-cmt"># 同步完成后清理 shadow 目录（重要！否则下次 FREEZE 会失败）</span>
+ls /var/lib/clickhouse/shadow/
+rm -rf /var/lib/clickhouse/shadow/*
+
+<span class="tok-cmt"># 或使用官方清理命令</span>
+clickhouse-client --query=<span class="tok-str">"ALTER TABLE analytics.events UNFREEZE WITH NAME 'backup_20260717'"</span></pre>
+  </div>
+
+  <div class="callout callout-warn">
+    <div class="callout-title">⚠️ FREEZE 限制</div>
+    <p>1. <strong>只支持本地</strong>，需自行 rsync 到远程；2. <strong>不支持增量</strong>，每次都是全量；3. <strong>占用 inode</strong>，大表会创建大量硬链接；4. <strong>shadow 目录不能残留</strong>，否则下次 FREEZE 报错；5. <strong>不支持 RESTORE</strong>，恢复需手工 cp 回 data 目录后 ATTACH。</p>
+  </div>
+
+  <h4>恢复流程（手工）</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 1. 停表（detach 元数据，数据保留）</span>
+clickhouse-client --query=<span class="tok-str">"DETACH TABLE analytics.events"</span>
+
+<span class="tok-cmt"># 2. 把备份的 part 拷回 data 目录</span>
+cp -r /backups/20260717/analytics/events/* \
+  /var/lib/clickhouse/data/analytics/events/
+chown -R clickhouse:clickhouse /var/lib/clickhouse/data/analytics/events/
+
+<span class="tok-cmt"># 3. 重新 attach</span>
+clickhouse-client --query=<span class="tok-str">"ATTACH TABLE analytics.events"</span>
+
+<span class="tok-cmt"># 4. 校验数据</span>
+clickhouse-client --query=<span class="tok-str">"SELECT count() FROM analytics.events"</span></pre>
+  </div>
+
+  <h3 id="bk-metadata">2.6 元数据备份</h3>
+  <p>元数据是数据可读性的前提，必须独立、定期备份。下表列出元数据备份的四个维度：</p>
+
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>对象</th><th>位置</th><th>备份方法</th><th>频率</th></tr></thead>
+      <tbody>
+        <tr><td>库表 DDL</td><td><code>/var/lib/clickhouse/metadata/</code></td><td><code>SHOW CREATE</code> 导出 / 目录 rsync</td><td>每日</td></tr>
+        <tr><td>用户/角色/配额</td><td><code>access/</code> 目录 + system</td><td><code>SHOW ACCESS</code> 导出</td><td>变更即备</td></tr>
+        <tr><td>配置文件</td><td><code>/etc/clickhouse-server/</code></td><td>git 版本控制</td><td>变更即提交</td></tr>
+        <tr><td>ZooKeeper 元数据</td><td>ZK 集群</td><td>ZK 快照 + 事务日志</td><td>每日</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>导出 DDL 与权限</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 导出所有非系统库的 DDL</span>
+clickhouse-client --query=<span class="tok-str">"</span>
+<span class="tok-str">SELECT arrayStringConcat(groupArray(ddl), ';\n')</span>
+<span class="tok-str">FROM (</span>
+<span class="tok-str">  SELECT show_create_table AS ddl</span>
+<span class="tok-str">  FROM system.tables</span>
+<span class="tok-str">  WHERE database NOT IN ('system', 'INFORMATION_SCHEMA')</span>
+<span class="tok-str">  ORDER BY database, name</span>
+<span class="tok-str">)"</span> &gt; /backups/schema_$(date +%Y%m%d).sql
+
+<span class="tok-cmt"># 导出所有用户</span>
+clickhouse-client --query=<span class="tok-str">"SHOW CREATE USERS FORMAT TabSeparated"</span> \
+  &gt; /backups/users_$(date +%Y%m%d).sql
+
+<span class="tok-cmt"># 导出所有角色</span>
+clickhouse-client --query=<span class="tok-str">"SHOW CREATE ROLES FORMAT TabSeparated"</span> \
+  &gt; /backups/roles_$(date +%Y%m%d).sql
+
+<span class="tok-cmt"># 导出所有授权</span>
+clickhouse-client --query=<span class="tok-str">"SHOW GRANTS FORMAT TabSeparated"</span> \
+  &gt; /backups/grants_$(date +%Y%m%d).sql
+
+<span class="tok-cmt"># 直接备份元数据目录（更快，但需停服保证一致性）</span>
+tar -czf /backups/metadata_$(date +%Y%m%d).tar.gz \
+  -C /var/lib/clickhouse metadata/ access/</pre>
+  </div>
+
+  <h4>ZooKeeper 备份</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 1. 在 ZK leader 上强制生成快照</span>
+echo <span class="tok-str">"cons"</span> | nc zk-leader 2181 | head
+echo <span class="tok-str">"tak snapshot"</span> | nc zk-leader 5181   <span class="tok-cmt"># 管理端口</span>
+
+<span class="tok-cmt"># 2. 备份 data 目录（含快照 + 事务日志）</span>
+tar -czf /backups/zookeeper_$(date +%Y%m%d).tar.gz \
+  -C /var/lib/zookeeper/version-2 .
+
+<span class="tok-cmt"># 3. 推到异地</span>
+rsync -avz /backups/zookeeper_*.tar.gz backup-server:/backups/zk/</pre>
+  </div>
+
+  <h3 id="bk-cluster">2.7 集群备份策略</h3>
+
+  <h4>分布式表备份策略</h4>
+  <p>分布式表是路由表，不存数据，所以备份对象是<strong>本地表</strong>。常见两种策略：</p>
+  <ul>
+    <li><strong>每分片独立备份</strong>：每个分片的本地表各自备份到独立的备份目标。优点：并行度高、网络流量分散；缺点：恢复时需协调多个分片。</li>
+    <li><strong>中心化统一备份</strong>：通过分布式表查询拉取全量数据到中心节点备份。优点：单一备份目标；缺点：流量集中、耗时长，不推荐大集群。</li>
+  </ul>
+
+  <h4>一致性考虑</h4>
+  <p>分布式表的写入是异步的（通过 <code>distributed_directory_monitor</code> 批量分发），各分片的快照时间点可能不一致。对于强一致性要求的场景：</p>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- 1. 暂停分布式表分发（让所有数据落到本地表）</span>
+<span class="tok-kw">SYSTEM STOP DISTRIBUTED SENDS</span> analytics.events_all;
+
+<span class="tok-cmt">-- 2. 等待 pending 队列清空</span>
+<span class="tok-kw">SELECT</span> count() <span class="tok-kw">FROM</span> system.distribution_queue
+<span class="tok-kw">WHERE</span> database = <span class="tok-str">'analytics'</span> <span class="tok-kw">AND</span> table = <span class="tok-str">'events_all'</span>;
+<span class="tok-cmt">-- 等到为 0</span>
+
+<span class="tok-cmt">-- 3. 各分片同时做备份（cron 或脚本协调）</span>
+<span class="tok-kw">BACKUP TABLE</span> analytics.events_local <span class="tok-kw">TO</span> ...
+
+<span class="tok-cmt">-- 4. 恢复分发</span>
+<span class="tok-kw">SYSTEM START DISTRIBUTED SENDS</span> analytics.events_all;</pre>
+  </div>
+
+  <h4>跨区域容灾</h4>
+  <p>对于核心业务，建议在异地部署一个 standby 集群，通过 ClickHouse 的 Cross-Replication 或 Kafka 双写实时同步。配合周期性全量备份到对象存储，构成"实时同步 + 定期快照"的两层防线。</p>
+
+  <h3 id="bk-dr-drill">2.8 灾难恢复演练</h3>
+  <p><strong>没有演练过的备份等于没有备份</strong>。建议每月执行一次恢复演练，每年执行一次完整灾备切换演练。</p>
+
+  <h4>单节点恢复演练</h4>
+  <ol>
+    <li>在测试环境部署同版本 ClickHouse。</li>
+    <li>从备份恢复：先恢复 schema（DDL），再恢复数据。</li>
+    <li>校验：行数、校验和、抽样查询对比。</li>
+    <li>记录 RTO（从触发到恢复完成的时间）。</li>
+    <li>填写演练报告，归档。</li>
+  </ol>
+
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 恢复演练脚本示例</span>
+set -e
+
+BACKUP_NAME=$1
+START_TIME=$(date +%s)
+
+<span class="tok-cmt"># 1. 恢复 schema</span>
+clickhouse-backup restore --schema $BACKUP_NAME
+
+<span class="tok-cmt"># 2. 恢复数据</span>
+clickhouse-backup restore --data $BACKUP_NAME
+
+<span class="tok-cmt"># 3. 校验</span>
+clickhouse-client --query=<span class="tok-str">"SELECT database, table, sum(rows) AS rows</span>
+<span class="tok-str">                    FROM system.parts WHERE active GROUP BY database, table"</span> \
+  &gt; /tmp/restored_counts.txt
+
+diff /tmp/expected_counts.txt /tmp/restored_counts.txt &amp;&amp; \
+  echo <span class="tok-str">"[OK] 行数校验通过"</span> || echo <span class="tok-str">"[FAIL] 行数不一致"</span>
+
+END_TIME=$(date +%s)
+echo <span class="tok-str">"RTO: $((END_TIME - START_TIME)) seconds"</span></pre>
+  </div>
+
+  <h4>集群级灾难切换演练</h4>
+  <ol>
+    <li><strong>模拟主集群故障</strong>：停主集群的写入（应用切换写入开关）。</li>
+    <li><strong>切换读取到 standby 集群</strong>：DNS / 配置中心切换。</li>
+    <li><strong>验证业务读</strong>：跑核心查询，对比结果。</li>
+    <li><strong>反向同步</strong>：故障恢复后，把切换期间的写入回灌主集群。</li>
+    <li><strong>切回主集群</strong>。</li>
+  </ol>
+
+  <h4>恢复验证清单</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>验证项</th><th>方法</th><th>通过标准</th></tr></thead>
+      <tbody>
+        <tr><td>表清单完整</td><td><code>system.tables</code> 行数对比</td><td>±0</td></tr>
+        <tr><td>行数</td><td>各表 <code>count()</code></td><td>±0.01%</td></tr>
+        <tr><td>列结构</td><td><code>DESCRIBE</code> 对比</td><td>完全一致</td></tr>
+        <tr><td>分区</td><td><code>system.parts</code> 分区对比</td><td>完全一致</td></tr>
+        <tr><td>抽样校验</td><td>随机 100 行 PK 比对</td><td>完全一致</td></tr>
+        <tr><td>用户权限</td><td><code>SHOW USERS</code> / <code>SHOW GRANTS</code></td><td>完全一致</td></tr>
+        <tr><td>查询性能</td><td>TPC-DS 抽样查询</td><td>±20%</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3 id="bk-monitor">2.9 监控与告警</h3>
+
+  <h4>备份任务监控</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">sql</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">-- BACKUP 命令执行历史</span>
+<span class="tok-kw">SELECT</span>
+    id, name, status,
+    formatReadableSize(total_size) <span class="tok-kw">AS</span> size,
+    start_time, end_time,
+    date_diff(<span class="tok-str">'second'</span>, start_time, end_time) <span class="tok-kw">AS</span> duration_sec,
+    error
+<span class="tok-kw">FROM</span> system.backups
+<span class="tok-kw">ORDER BY</span> start_time <span class="tok-kw">DESC</span> <span class="tok-kw">LIMIT</span> <span class="tok-num">20</span>;
+
+<span class="tok-cmt">-- 找出失败的备份</span>
+<span class="tok-kw">SELECT</span> * <span class="tok-kw">FROM</span> system.backups <span class="tok-kw">WHERE</span> status = <span class="tok-str">'BACKUP_FAILED'</span>;</pre>
+  </div>
+
+  <h4>关键告警规则</h4>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>告警</th><th>条件</th><th>级别</th></tr></thead>
+      <tbody>
+        <tr><td>备份失败</td><td><code>system.backups.status='BACKUP_FAILED'</code></td><td>P1</td></tr>
+        <tr><td>备份超时</td><td>执行时长 &gt; 阈值（如 6 小时）</td><td>P2</td></tr>
+        <tr><td>备份缺失</td><td>近 26 小时无成功备份记录</td><td>P1</td></tr>
+        <tr><td>备份空间</td><td>对象存储 bucket 用量 &gt; 80%</td><td>P2</td></tr>
+        <tr><td>恢复演练失败</td><td>行数 / 校验和不匹配</td><td>P1</td></tr>
+        <tr><td>clickhouse-backup 进程挂掉</td><td>端口 7171 不通</td><td>P2</td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h4>备份空间管理</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt"># 查看本地备份占用</span>
+du -sh /var/lib/clickhouse/backups/*
+
+<span class="tok-cmt"># clickhouse-backup 自动清理（已配 config）</span>
+clickhouse-backup clean
+
+<span class="tok-cmt"># S3 生命周期策略（建议在云控制台配置）</span>
+<span class="tok-cmt"># - 30 天后转到 Standard-IA</span>
+<span class="tok-cmt"># - 90 天后转到 Glacier</span>
+<span class="tok-cmt"># - 365 天后删除</span></pre>
+  </div>
+
+  <h3 id="bk-best">2.10 最佳实践</h3>
+
+  <h4>备份频率</h4>
+  <ul>
+    <li><strong>核心 OLTP 库</strong>：每小时增量 + 每日全量。</li>
+    <li><strong>分析 OLAP 库</strong>：每日增量 + 每周全量。</li>
+    <li><strong>冷归档库</strong>：变更时备份。</li>
+    <li><strong>元数据（DDL/权限/配置）</strong>：每次变更即备份，且每日全量。</li>
+  </ul>
+
+  <h4>保留策略</h4>
+  <ul>
+    <li>本地：7 天（快速恢复用）</li>
+    <li>对象存储：30 天</li>
+    <li>归档（Glacier/冷存储）：1 年</li>
+    <li>合规要求场景：按法规保留 3~7 年</li>
+  </ul>
+
+  <h4>加密与访问控制</h4>
+  <ul>
+    <li>S3 启用 SSE-KMS 服务端加密。</li>
+    <li>clickhouse-backup 配置文件中的密钥用 KMS / Vault 管理，不要明文。</li>
+    <li>备份 bucket 单独账号，最小权限，仅备份程序可写。</li>
+    <li>恢复操作需双人复核（4-eye principle）。</li>
+  </ul>
+
+  <h4>备份测试</h4>
+  <div class="callout callout-tip">
+    <div class="callout-title">✅ 黄金法则</div>
+    <p><strong>每月至少一次完整恢复演练</strong>，每年至少一次跨集群灾备切换演练。备份的价值在于"能恢复"，不在于"已备份"。</p>
+  </div>
+
+  <h4>生产环境备份脚本模板</h4>
+  <div class="code-block">
+    <div class="code-header"><span class="code-lang">bash</span><button class="copy-btn">复制</button></div>
+<pre><span class="tok-cmt">#!/bin/bash</span>
+<span class="tok-cmt"># /opt/scripts/ch_backup.sh - 生产备份主脚本</span>
+set -euo pipefail
+
+BACKUP_NAME=<span class="tok-str">"auto_$(date +%Y%m%d_%H%M)"</span>
+LOG=/var/log/clickhouse-backup.log
+ALERT_WEBHOOK=<span class="tok-str">"https://hooks.slack.com/services/..."</span>
+
+log() { echo <span class="tok-str">"[$(date '+%F %T')] $1"</span> | tee -a $LOG; }
+
+alert() {
+  log <span class="tok-str">"[FAIL] $1"</span>
+  curl -s -X POST $ALERT_WEBHOOK -H <span class="tok-str">'Content-Type: application/json'</span> \
+    -d <span class="tok-str">"{\"text\":\"🚨 ClickHouse备份失败: $1\"}"</span>
+  exit 1
+}
+
+log <span class="tok-str">"=== 备份开始: $BACKUP_NAME ==="</span>
+
+<span class="tok-cmt"># 1. 创建本地备份</span>
+clickhouse-backup create $BACKUP_NAME || alert <span class="tok-str">"create 失败"</span>
+
+<span class="tok-cmt"># 2. 上传到 S3</span>
+clickhouse-backup upload $BACKUP_NAME || alert <span class="tok-str">"upload 失败"</span>
+
+<span class="tok-cmt"># 3. 元数据备份</span>
+clickhouse-client --query=<span class="tok-str">"SHOW CREATE TABLES FORMAT TabSeparated"</span> \
+  &gt; /var/lib/clickhouse/backups/schema_$(date +%Y%m%d).sql || alert <span class="tok-str">"schema 导出失败"</span>
+
+<span class="tok-cmt"># 4. 清理旧备份</span>
+clickhouse-backup clean || log <span class="tok-str">"[WARN] clean 失败，不影响备份"</span>
+
+<span class="tok-cmt"># 5. 校验</span>
+BACKUP_SIZE=$(clickhouse-backup list $BACKUP_NAME | awk <span class="tok-str">'{print $2}'</span> | tail -1)
+log <span class="tok-str">"备份完成: $BACKUP_NAME, 大小: $BACKUP_SIZE"</span></pre>
+  </div>
+
+  <hr>
+
+  <!-- ============================================ -->
+  <!-- 附录 -->
+  <!-- ============================================ -->
+  <h2 class="section-title" id="appendix"><span class="num">★</span>附录 · 命令速查表</h2>
+
+  <h3>元数据操作速查</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>场景</th><th>命令</th></tr></thead>
+      <tbody>
+        <tr><td>列出所有库</td><td><code>SELECT * FROM system.databases</code></td></tr>
+        <tr><td>列出库下表</td><td><code>SELECT * FROM system.tables WHERE database='x'</code></td></tr>
+        <tr><td>表结构</td><td><code>SHOW CREATE TABLE db.table</code></td></tr>
+        <tr><td>列信息</td><td><code>DESCRIBE TABLE db.table</code></td></tr>
+        <tr><td>分区清单</td><td><code>SELECT partition, count() FROM system.parts WHERE table='x' AND active GROUP BY partition</code></td></tr>
+        <tr><td>表大小</td><td><code>SELECT formatReadableSize(sum(bytes_on_disk)) FROM system.parts WHERE table='x' AND active</code></td></tr>
+        <tr><td>添加列</td><td><code>ALTER TABLE x ADD COLUMN col String AFTER y</code></td></tr>
+        <tr><td>改列注释</td><td><code>ALTER TABLE x MODIFY COLUMN col COMMENT '...'</code></td></tr>
+        <tr><td>同步副本</td><td><code>SYSTEM SYNC REPLICA db.table</code></td></tr>
+        <tr><td>卸载分区</td><td><code>ALTER TABLE x DETACH PARTITION '20260101'</code></td></tr>
+        <tr><td>集群 DDL</td><td><code>CREATE TABLE x ON CLUSTER c (...)</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>备份恢复速查</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>场景</th><th>命令</th></tr></thead>
+      <tbody>
+        <tr><td>表备份到本地</td><td><code>BACKUP TABLE x TO Disk('backups','x.zip')</code></td></tr>
+        <tr><td>库备份到 S3</td><td><code>BACKUP DATABASE x TO S3('url','key','secret')</code></td></tr>
+        <tr><td>增量备份</td><td><code>BACKUP TABLE x TO Disk(...) SETTINGS base_backup=Disk(...)</code></td></tr>
+        <tr><td>恢复</td><td><code>RESTORE TABLE x FROM Disk('backups','x.zip')</code></td></tr>
+        <tr><td>恢复到新表</td><td><code>RESTORE TABLE x AS x_new FROM ...</code></td></tr>
+        <tr><td>FREEZE</td><td><code>ALTER TABLE x FREEZE WITH NAME 'bk'</code></td></tr>
+        <tr><td>UNFREEZE</td><td><code>ALTER TABLE x UNFREEZE WITH NAME 'bk'</code></td></tr>
+        <tr><td>cb 创建</td><td><code>clickhouse-backup create name</code></td></tr>
+        <tr><td>cb 上传</td><td><code>clickhouse-backup upload name</code></td></tr>
+        <tr><td>cb 恢复 schema</td><td><code>clickhouse-backup restore --schema name</code></td></tr>
+        <tr><td>cb 恢复 data</td><td><code>clickhouse-backup restore --data name</code></td></tr>
+        <tr><td>查看备份历史</td><td><code>SELECT * FROM system.backups ORDER BY start_time DESC</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <h3>关键监控指标速查</h3>
+  <div class="table-wrap">
+    <table>
+      <thead><tr><th>指标</th><th>来源表</th></tr></thead>
+      <tbody>
+        <tr><td>副本延迟</td><td><code>system.replicas.absolute_delay</code></td></tr>
+        <tr><td>队列堆积</td><td><code>system.replicas.queue_size</code></td></tr>
+        <tr><td>只读副本</td><td><code>system.replicas.is_readonly</code></td></tr>
+        <tr><td>未完成 mutation</td><td><code>system.mutations WHERE NOT is_done</code></td></tr>
+        <tr><td>part 数</td><td><code>system.parts WHERE active GROUP BY table</code></td></tr>
+        <tr><td>分布式 DDL 队列</td><td><code>system.distributed_ddl_queue</code></td></tr>
+        <tr><td>备份任务状态</td><td><code>system.backups</code></td></tr>
+        <tr><td>ZK 连接状态</td><td><code>system.zookeeper_connection</code></td></tr>
+      </tbody>
+    </table>
+  </div>
+
+  <div class="callout callout-info" style="margin-top:40px">
+    <div class="callout-title">📚 进一步阅读</div>
+    <p>
+      • 官方文档：<a href="https://clickhouse.com/docs" target="_blank">clickhouse.com/docs</a><br>
+      • BACKUP/RESTORE 详细：<a href="https://clickhouse.com/docs/en/operations/backup" target="_blank">clickhouse.com/docs/en/operations/backup</a><br>
+      • clickhouse-backup 项目：<a href="https://github.com/Altinity/clickhouse-backup" target="_blank">github.com/Altinity/clickhouse-backup</a><br>
+      • 系统表参考：<a href="https://clickhouse.com/docs/en/operations/system-tables" target="_blank">clickhouse.com/docs/en/operations/system-tables</a>
+    </p>
+  </div>
+
+</main>
+
+<!-- ========== 页脚 ========== -->
+<footer class="footer">
+  <div>ClickHouse 操作指南 · 业务元数据 & 备份 · v1.0</div>
+  <div>适用 ClickHouse 22.x+ · 最后更新 2026-07-17</div>
+</footer>
+
+<!-- ========== 回到顶部 ========== -->
+<button class="back-top" id="backTop" aria-label="回到顶部">
+  <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 19V5M5 12l7-7 7 7"/></svg>
+</button>
+
+<script>
+/* ========== 代码块复制 ========== */
+document.querySelectorAll('.copy-btn').forEach(btn => {
+  btn.addEventListener('click', async () => {
+    const code = btn.closest('.code-block').querySelector('pre').innerText;
+    try {
+      await navigator.clipboard.writeText(code);
+      const original = btn.textContent;
+      btn.textContent = '已复制';
+      btn.classList.add('copied');
+      setTimeout(() => {
+        btn.textContent = original;
+        btn.classList.remove('copied');
+      }, 1500);
+    } catch (e) {
+      btn.textContent = '复制失败';
+      setTimeout(() => btn.textContent = '复制', 1500);
+    }
+  });
+});
+
+/* ========== 回到顶部 ========== */
+const backTop = document.getElementById('backTop');
+window.addEventListener('scroll', () => {
+  backTop.classList.toggle('show', window.scrollY > 400);
+});
+backTop.addEventListener('click', () => window.scrollTo({ top: 0, behavior: 'smooth' }));
+
+/* ========== 侧边栏导航高亮 ========== */
+const navLinks = document.querySelectorAll('.nav-link[href^="#"]');
+const sections = Array.from(navLinks)
+  .map(l => document.getElementById(l.getAttribute('href').slice(1)))
+  .filter(Boolean);
+
+function updateActive() {
+  const scrollY = window.scrollY + 120;
+  let activeId = null;
+  for (let i = sections.length - 1; i >= 0; i--) {
+    if (sections[i].offsetTop <= scrollY) {
+      activeId = sections[i].id;
+      break;
+    }
+  }
+  navLinks.forEach(l => {
+    l.classList.toggle('active', l.getAttribute('href') === '#' + activeId);
+  });
+}
+window.addEventListener('scroll', updateActive, { passive: true });
+updateActive();
+
+/* ========== 移动端菜单 ========== */
+document.getElementById('menuToggle').addEventListener('click', () => {
+  document.getElementById('sidebar').classList.toggle('open');
+});
+document.querySelectorAll('.nav-link').forEach(l => {
+  l.addEventListener('click', () => {
+    if (window.innerWidth <= 900) {
+      document.getElementById('sidebar').classList.remove('open');
+    }
+  });
+});
+
+/* ========== 打印 ========== */
+document.getElementById('printBtn').addEventListener('click', () => window.print());
+
+/* ========== 搜索功能 ========== */
+const searchInput = document.getElementById('searchInput');
+const searchResults = document.getElementById('searchResults');
+
+// 构建搜索索引（所有标题 + 段落 + 代码块）
+const searchIndex = [];
+const contentEl = document.querySelector('.content');
+const headings = contentEl.querySelectorAll('h2, h3, h4');
+const blocks = contentEl.querySelectorAll('h3, h4, p, li, pre, td');
+
+blocks.forEach(el => {
+  const text = el.innerText.trim();
+  if (text.length < 3) return;
+  // 找到所属的最近一个有 id 的标题
+  let parent = el;
+  let sectionId = null;
+  let sectionTitle = null;
+  while (parent && parent !== contentEl) {
+    if (parent.id && parent.tagName.match(/^H[2-4]$/)) {
+      sectionId = parent.id;
+      sectionTitle = parent.innerText.replace(/^▸\s*/, '');
+      break;
+    }
+    parent = parent.previousElementSibling || parent.parentElement;
+  }
+  // 如果没找到，往上找最近的有 id 的元素
+  if (!sectionId) {
+    let prev = el.previousElementSibling;
+    while (prev) {
+      if (prev.id) {
+        sectionId = prev.id;
+        sectionTitle = prev.tagName.match(/^H[2-4]$/) ? prev.innerText.replace(/^▸\s*/, '') : prev.innerText;
+        break;
+      }
+      prev = prev.previousElementSibling;
+    }
+  }
+  // 用 closest 找最近的 h3/h4 祖先
+  if (!sectionId) {
+    let cur = el;
+    while (cur) {
+      const h = cur.previousElementSibling;
+      // walk backwards to find nearest heading
+      break;
+    }
+  }
+  // fallback: nearest preceding heading via traversal
+  if (!sectionId) {
+    let node = el;
+    while (node) {
+      const found = node.id && node.tagName.match(/^H[2-4]$/);
+      if (found) {
+        sectionId = node.id;
+        sectionTitle = node.innerText.replace(/^▸\s*/, '');
+        break;
+      }
+      // 先看前面的兄弟
+      let prev = node.previousElementSibling;
+      let foundHere = false;
+      while (prev) {
+        if (prev.id && prev.tagName.match(/^H[2-4]$/)) {
+          sectionId = prev.id;
+          sectionTitle = prev.innerText.replace(/^▸\s*/, '');
+          foundHere = true;
+          break;
+        }
+        prev = prev.previousElementSibling;
+      }
+      if (foundHere) break;
+      node = node.parentElement;
+    }
+  }
+
+  searchIndex.push({
+    text,
+    sectionId: sectionId || 'top',
+    sectionTitle: sectionTitle || '首页'
+  });
+});
+
+function highlight(text, query) {
+  if (!query) return text;
+  const re = new RegExp('(' + query.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + ')', 'gi');
+  return text.replace(re, '<mark>$1</mark>');
+}
+
+function doSearch(query) {
+  query = query.trim();
+  if (!query) {
+    searchResults.classList.remove('show');
+    searchResults.innerHTML = '';
+    return;
+  }
+  const lower = query.toLowerCase();
+  const matches = searchIndex
+    .filter(item => item.text.toLowerCase().includes(lower))
+    .slice(0, 30);
+
+  if (matches.length === 0) {
+    searchResults.innerHTML = '<div class="no-result">未找到匹配内容，试试其他关键词</div>';
+  } else {
+    searchResults.innerHTML = matches.map(m => {
+      const snippet = m.text.length > 120 ? m.text.slice(0, 120) + '...' : m.text;
+      return `<div class="search-result-item" data-href="#${m.sectionId}">
+        <div class="title">${highlight(m.sectionTitle, query)}</div>
+        <div class="snippet">${highlight(snippet, query)}</div>
+      </div>`;
+    }).join('');
+    searchResults.querySelectorAll('.search-result-item').forEach(item => {
+      item.addEventListener('click', () => {
+        const id = item.getAttribute('data-href').slice(1);
+        const target = document.getElementById(id);
+        if (target) {
+          target.scrollIntoView({ behavior: 'smooth' });
+          searchResults.classList.remove('show');
+          searchInput.value = '';
+        }
+      });
+    });
+  }
+  searchResults.classList.add('show');
+}
+
+searchInput.addEventListener('input', e => doSearch(e.target.value));
+searchInput.addEventListener('keydown', e => {
+  if (e.key === 'Escape') {
+    searchInput.value = '';
+    searchResults.classList.remove('show');
+    searchInput.blur();
+  }
+});
+
+document.addEventListener('keydown', e => {
+  if (e.key === '/' && document.activeElement !== searchInput) {
+    e.preventDefault();
+    searchInput.focus();
+  }
+});
+
+document.addEventListener('click', e => {
+  if (!e.target.closest('.search-wrap') && !e.target.closest('.search-results')) {
+    searchResults.classList.remove('show');
+  }
+});
+</script>
+
+</body>
+</html>
